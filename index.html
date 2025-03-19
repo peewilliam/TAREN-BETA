@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MMORPG Top-Down</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <p>Carregando o mundo...</p>
+    </div>
+
+    <!-- UI Elements -->
+    <div id="ui-container">
+     
+      
+        
+        <div id="connection-status" class="ui-element">
+            Conectando ao servidor...
+        </div>
+        
+        <div id="player-stats" class="ui-element">
+            <div>Jogadores online: <span id="player-count">0</span></div>
+            <div>Posição: <span id="player-position">X: 0, Y: 0</span></div>
+        </div>
+    </div>
+    
+    <!-- Chat System -->
+    <div id="chat-container" style="display: none;">
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Digite sua mensagem..." maxlength="100">
+            <button id="chat-send">Enviar</button>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html> 
