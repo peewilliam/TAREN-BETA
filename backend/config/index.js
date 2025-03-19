@@ -22,6 +22,29 @@ module.exports = {
     settings: {
       moveSpeed: 0.2,
       chatMessageMaxLength: 100
+    },
+    // Configurações das cenas
+    scenes: {
+      main: {
+        name: 'Hub Central',
+        worldSize: 100,
+        spawnPoint: { x: 0, y: 0 }
+      },
+      'dungeon-fire': {
+        name: 'Dungeon de Fogo',
+        worldSize: 80,
+        spawnPoint: { x: 0, y: 30 }
+      },
+      'dungeon-ice': {
+        name: 'Dungeon de Gelo',
+        worldSize: 80,
+        spawnPoint: { x: 0, y: 30 }
+      },
+      'arena': {
+        name: 'Arena',
+        worldSize: 100,
+        spawnPoint: { x: 0, y: 45 }
+      }
     }
   },
   cors: {

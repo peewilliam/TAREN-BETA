@@ -55,7 +55,18 @@ export default class PlayerControls {
    * @returns {boolean} - True se o jogador se moveu
    */
   update(player, worldSize) {
-    if (!player) return false;
+    if (!player) {
+      console.warn('PlayerControls: jogador não definido em update()');
+      return false;
+    }
+    
+    if (!player.position) {
+      console.warn('PlayerControls: posição do jogador não definida');
+      return false;
+    }
+    
+    // Armazenar referência ao jogador (útil para garantir controle após mudança de cena)
+    this.player = player;
     
     const position = { 
       x: player.position.x, 
@@ -88,14 +99,11 @@ export default class PlayerControls {
       position.x = Math.max(-limit, Math.min(limit, position.x));
       position.y = Math.max(-limit, Math.min(limit, position.y));
       
-      // Atualizar a posição no modelo
-      player.position.x = position.x;
-      player.position.z = position.y;
+      // Atualizar a posição no modelo usando o método do jogador
+      player.updatePosition(position);
       
-      // Atualizar a posição do mesh do jogador diretamente
-      if (player.mesh) {
-        player.mesh.position.set(position.x, 0, position.y);
-      }
+      // Log para depuração (remove em produção)
+      console.log(`Movimento: (${position.x.toFixed(2)}, ${position.y.toFixed(2)})`);
       
       // Enviar atualização para o servidor
       this.socket.emit('updatePosition', position);

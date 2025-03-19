@@ -60,7 +60,46 @@ export const UI_CONFIG = {
 // Configurações de texturas
 export const TEXTURE_PATHS = {
   ground: 'https://i.imgur.com/nSpyQ0M.jpg',
-  // Adicione outras texturas aqui
+  lava: 'https://i.imgur.com/MDGwzBJ.jpg',
+  ice: 'https://i.imgur.com/8uwgnLt.jpg',
+  arena: 'https://i.imgur.com/T8bFRR5.jpg',
+  // Outras texturas podem ser adicionadas aqui
+};
+
+// Configurações específicas para cada cena
+export const SCENE_CONFIG = {
+  main: {
+    skyColor: 0x87CEEB, // Azul celeste
+    groundTexture: TEXTURE_PATHS.ground,
+    ambientLightIntensity: 0.7,
+    fogColor: 0xDDEEFF,
+    fogDensity: 0.01,
+    worldSize: 100
+  },
+  'dungeon-fire': {
+    skyColor: 0x331111, // Vermelho escuro
+    groundTexture: TEXTURE_PATHS.lava,
+    ambientLightIntensity: 0.5,
+    fogColor: 0x990000,
+    fogDensity: 0.03,
+    worldSize: 80
+  },
+  'dungeon-ice': {
+    skyColor: 0x111133, // Azul escuro
+    groundTexture: TEXTURE_PATHS.ice,
+    ambientLightIntensity: 0.6,
+    fogColor: 0x88BBFF,
+    fogDensity: 0.02,
+    worldSize: 80
+  },
+  arena: {
+    skyColor: 0x333333, // Cinza escuro
+    groundTexture: TEXTURE_PATHS.arena,
+    ambientLightIntensity: 0.8,
+    fogColor: 0x555555,
+    fogDensity: 0.005,
+    worldSize: 100
+  }
 };
 
 // Teclas de controle
@@ -70,7 +109,8 @@ export const CONTROL_KEYS = {
   backward: 's', 
   right: 'd',
   chat: 'Enter',
-  closeChat: 'Escape'
+  closeChat: 'Escape',
+  interact: 'e' // Para interagir com portais
 };
 
 // Mensagens do sistema
@@ -79,7 +119,9 @@ export const SYSTEM_MESSAGES = {
   playerJoined: (name) => `${name} entrou no jogo!`,
   playerLeft: (name) => `${name} saiu do jogo.`,
   loading: 'Carregando o mundo...',
-  connected: 'Conectado ao servidor, aguardando dados do jogo...'
+  connected: 'Conectado ao servidor, aguardando dados do jogo...',
+  sceneChange: (sceneName) => `Teleportando para: ${sceneName}...`,
+  nearPortal: (destination) => `Pressione E para entrar em: ${destination}`
 };
 
 export default {
@@ -89,6 +131,7 @@ export default {
   LIGHT_CONFIG,
   UI_CONFIG,
   TEXTURE_PATHS,
+  SCENE_CONFIG,
   CONTROL_KEYS,
   SYSTEM_MESSAGES
 }; 

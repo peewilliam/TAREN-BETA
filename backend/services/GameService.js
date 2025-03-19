@@ -27,6 +27,25 @@ class GameService {
     
     return player.updatePosition(position);
   }
+  
+  // Mudar a cena de um jogador
+  changePlayerScene(socketId, sceneName) {
+    const player = this.players.get(socketId);
+    if (!player) return false;
+    
+    const success = player.changeScene(sceneName);
+    
+    if (success) {
+      // Atualizar timestamp de atividade
+      player.lastActivity = new Date();
+      
+      // Fazer log da mudança de cena
+      console.log(`Jogador ${player.name} (${socketId}) mudou para a cena: ${sceneName}`);
+      console.log(`Nova posição: (${player.position.x}, ${player.position.y})`);
+    }
+    
+    return success;
+  }
 
   // Obter um jogador pelo ID
   getPlayer(socketId) {
@@ -36,6 +55,13 @@ class GameService {
   // Obter todos os jogadores
   getAllPlayers() {
     return Array.from(this.players.values()).map(player => player.serialize());
+  }
+  
+  // Obter jogadores em uma cena específica
+  getPlayersInScene(sceneName) {
+    return Array.from(this.players.values())
+      .filter(player => player.sceneName === sceneName)
+      .map(player => player.serialize());
   }
 
   // Criar uma mensagem de chat
@@ -53,6 +79,21 @@ class GameService {
       worldSize: config.game.worldSize,
       uptime: Math.floor((new Date() - this.lastUpdate) / 1000)
     };
+  }
+  
+  // Obter estatísticas de cenas
+  getSceneStats() {
+    const stats = {};
+    const scenes = ['main', 'dungeon-fire', 'dungeon-ice', 'arena'];
+    
+    scenes.forEach(sceneName => {
+      const playersInScene = this.getPlayersInScene(sceneName).length;
+      stats[sceneName] = {
+        players: playersInScene
+      };
+    });
+    
+    return stats;
   }
 
   // Verificar jogadores inativos (para futura implementação de timeout)

@@ -15,6 +15,7 @@ class Player {
     this.name = playerData.name || `Jogador ${playerData.id.substring(0, 4)}`;
     this.color = playerData.color || PLAYER_CONFIG.bodyColor;
     this.position = new THREE.Vector3(playerData.position.x, 0, playerData.position.y);
+    this.sceneName = playerData.sceneName || 'main'; // Cena em que o jogador está
     
     // Criar a representação visual do jogador
     this.mesh = this.createPlayerMesh();
@@ -71,14 +72,65 @@ class Player {
    * @param {Object} position - Nova posição {x, y}
    */
   updatePosition(position) {
+    if (!position) {
+      console.error('Tentativa de atualizar posição com valor nulo');
+      return;
+    }
+    
+    console.log(`Atualizando posição do jogador ${this.id}:`, position);
+    
     // Atualizar a posição interna
-    this.position.x = position.x;
-    this.position.z = position.y;
+    this.position.x = position.x || 0;
+    this.position.z = position.y || 0;
     
     // Atualizar a posição do mesh
     if (this.mesh) {
-      this.mesh.position.set(position.x, 0, position.y);
+      this.mesh.position.set(position.x || 0, 0, position.y || 0);
+    } else {
+      console.warn('Mesh não encontrado ao atualizar posição');
     }
+  }
+  
+  /**
+   * Atualiza a cena do jogador
+   * @param {string} sceneName - Nome da cena
+   */
+  changeScene(sceneName) {
+    this.sceneName = sceneName;
+  }
+  
+  /**
+   * Recria o modelo visual do jogador (útil após mudança de cena)
+   */
+  recreatePlayerMesh() {
+    // Se já existe um mesh, limpar as labels antes de substituir
+    if (this.mesh) {
+      this.mesh.traverse(object => {
+        if (object instanceof CSS2DObject && object.div && object.div.parentNode) {
+          object.div.parentNode.removeChild(object.div);
+        }
+      });
+    }
+    
+    // Criar um novo mesh
+    this.mesh = this.createPlayerMesh();
+    
+    // Certificar-se de que a posição está correta
+    this.updatePosition({
+      x: this.position.x,
+      y: this.position.z
+    });
+    
+    return this.mesh;
+  }
+  
+  /**
+   * Verifica se o jogador está na cena especificada
+   * @param {string} sceneName - Nome da cena para verificar
+   * @returns {boolean} - Se o jogador está na cena
+   */
+  isInScene(sceneName) {
+    return this.sceneName === sceneName;
   }
   
   /**
@@ -90,6 +142,23 @@ class Player {
         object.updateMatrixWorld();
       }
     });
+  }
+  
+  /**
+   * Serializa o jogador para envio ao servidor
+   * @returns {Object} - Dados serializados do jogador
+   */
+  serialize() {
+    return {
+      id: this.id,
+      name: this.name,
+      position: {
+        x: this.position.x,
+        y: this.position.z
+      },
+      color: this.color,
+      sceneName: this.sceneName
+    };
   }
   
   /**

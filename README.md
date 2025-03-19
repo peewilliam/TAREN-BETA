@@ -7,6 +7,7 @@ Um MMORPG simples desenvolvido com Node.js, Vite e Three.js, oferecendo uma expe
 - **Mundo 3D**: Ambiente virtual com iluminação dinâmica e sombras
 - **Multiplayer em Tempo Real**: Conexão via Socket.IO para interação entre jogadores
 - **Sistema de Chat**: Comunicação entre jogadores
+- **Sistema de Cenas**: Múltiplos mapas com portais interativos para transição
 - **Controles Intuitivos**: Movimento WASD e interface responsiva
 - **Interface Moderna**: Design limpo e minimalista
 - **Performance Otimizada**: Renderização eficiente com Three.js
@@ -39,7 +40,12 @@ src/
 ├── lib/
 │   └── CSS2DRenderer.js  # Renderização de elementos 2D
 ├── scenes/
-│   └── GameScene.js      # Cena do jogo
+│   ├── BaseScene.js      # Classe base para todas as cenas
+│   ├── SceneManager.js   # Gerenciador de cenas
+│   ├── MainScene.js      # Cena principal (hub)
+│   ├── DungeonFireScene.js # Dungeon com tema de fogo
+│   ├── DungeonIceScene.js  # Dungeon com tema de gelo
+│   └── ArenaScene.js     # Arena para batalhas
 ├── services/
 │   └── GameService.js    # Serviço de comunicação
 ├── sockets/
@@ -56,6 +62,14 @@ src/
 - Nomes flutuantes sobre os personagens
 - Movimento suave e responsivo
 - Sincronização de posição em tempo real
+- Persistência de jogadores entre cenas
+
+### Sistema de Cenas/Mapas
+- Múltiplos mapas com temas diferentes
+- Portais interativos para transição entre cenas
+- Sincronização de jogadores específica para cada cena
+- Sistema de prompt visual para interação com portais
+- Sistema de salas no servidor para separar jogadores por cena
 
 ### Interface do Usuário
 - Tela de carregamento com feedback visual
@@ -63,6 +77,7 @@ src/
 - Exibição de posição do jogador
 - Status de conexão
 - Sistema de chat integrado
+- Prompts visuais para interação com portais
 
 ### Mundo do Jogo
 - Terreno com textura
@@ -70,12 +85,14 @@ src/
 - Bordas do mundo
 - Iluminação dinâmica
 - Sombras
+- Portais com efeitos visuais
 
 ### Sistema de Chat
 - Mensagens do sistema
 - Mensagens de jogadores com cores personalizadas
 - Histórico de mensagens
 - Interface intuitiva
+- Chat específico por cena
 
 ## 🎮 Controles
 
@@ -83,6 +100,7 @@ src/
 - **A**: Mover para esquerda
 - **S**: Mover para trás
 - **D**: Mover para direita
+- **E**: Interagir com portal (quando próximo)
 - **Enter**: Abrir chat
 - **Escape**: Fechar chat
 
@@ -123,6 +141,7 @@ O arquivo `src/config/gameConfig.js` contém todas as configurações do jogo, i
 - Configurações de UI
 - Teclas de controle
 - Mensagens do sistema
+- Configurações específicas de cada cena
 
 ## 🤝 Contribuindo
 

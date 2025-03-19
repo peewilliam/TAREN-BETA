@@ -9,6 +9,7 @@ class Player {
     this.color = this.getRandomColor();
     this.createdAt = new Date();
     this.lastActivity = new Date();
+    this.sceneName = 'main'; // Cena inicial (hub central)
   }
 
   getRandomSpawnPosition() {
@@ -44,12 +45,58 @@ class Player {
     );
   }
 
+  /**
+   * Atualiza a cena do jogador
+   * @param {string} sceneName - Nome da nova cena
+   * @returns {boolean} - Se a atualização foi bem-sucedida
+   */
+  changeScene(sceneName) {
+    // Validar se a cena é permitida
+    const allowedScenes = ['main', 'dungeon-fire', 'dungeon-ice', 'arena'];
+    
+    if (allowedScenes.includes(sceneName)) {
+      this.sceneName = sceneName;
+      this.lastActivity = new Date();
+      
+      // Redefinir posição dependendo da cena
+      if (sceneName === 'main') {
+        // Spawn central no hub principal
+        this.position = { x: 0, y: 0 };
+      } else {
+        // Spawn próximo à entrada da cena
+        this.position = this.getSceneSpawnPosition(sceneName);
+      }
+      
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Obtém a posição de spawn para uma cena específica
+   * @param {string} sceneName - Nome da cena
+   * @returns {Object} - Posição de spawn {x, y}
+   */
+  getSceneSpawnPosition(sceneName) {
+    // Posições específicas para cada cena
+    const spawnPositions = {
+      'main': { x: 0, y: 0 },
+      'dungeon-fire': { x: 0, y: 30 },
+      'dungeon-ice': { x: 0, y: 30 },
+      'arena': { x: 0, y: 45 }
+    };
+    
+    return spawnPositions[sceneName] || { x: 0, y: 0 };
+  }
+
   serialize() {
     return {
       id: this.id,
       name: this.name,
       position: this.position,
-      color: this.color
+      color: this.color,
+      sceneName: this.sceneName
     };
   }
 

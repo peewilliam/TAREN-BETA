@@ -251,6 +251,62 @@ class UserInterface {
       }
     }
   }
+  
+  /**
+   * Mostra o prompt de interação com portal
+   * @param {string} portalName - Nome do portal
+   */
+  showPortalPrompt(portalName) {
+    // Criar elemento de prompt se não existir
+    if (!this.portalPrompt) {
+      this.portalPrompt = document.createElement('div');
+      this.portalPrompt.className = 'portal-prompt';
+      this.portalPrompt.style.position = 'fixed';
+      this.portalPrompt.style.bottom = '150px';
+      this.portalPrompt.style.left = '50%';
+      this.portalPrompt.style.transform = 'translateX(-50%)';
+      this.portalPrompt.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      this.portalPrompt.style.color = 'white';
+      this.portalPrompt.style.padding = '10px 20px';
+      this.portalPrompt.style.borderRadius = '5px';
+      this.portalPrompt.style.fontWeight = 'bold';
+      this.portalPrompt.style.zIndex = '1000';
+      this.portalPrompt.style.boxShadow = '0 0 10px rgba(0, 200, 255, 0.7)';
+      this.portalPrompt.style.border = '1px solid rgba(0, 200, 255, 0.7)';
+      document.body.appendChild(this.portalPrompt);
+    }
+    
+    // Atualizar texto do prompt
+    this.portalPrompt.innerHTML = `Pressione <span style="color: #00ffff; font-weight: bold;">E</span> para entrar em: ${portalName}`;
+    
+    // Mostrar prompt
+    this.portalPrompt.style.display = 'block';
+    
+    // Adicionar efeito de pulsação
+    if (!this.portalPrompt.animationInterval) {
+      this.portalPrompt.animationInterval = setInterval(() => {
+        this.portalPrompt.style.boxShadow = 
+          this.portalPrompt.style.boxShadow === '0 0 10px rgba(0, 200, 255, 0.7)' 
+            ? '0 0 20px rgba(0, 200, 255, 1)' 
+            : '0 0 10px rgba(0, 200, 255, 0.7)';
+      }, 500);
+    }
+  }
+  
+  /**
+   * Oculta o prompt de interação com portal
+   */
+  hidePortalPrompt() {
+    if (this.portalPrompt) {
+      this.portalPrompt.style.display = 'none';
+      
+      // Limpar animação
+      if (this.portalPrompt.animationInterval) {
+        clearInterval(this.portalPrompt.animationInterval);
+        this.portalPrompt.animationInterval = null;
+      }
+    }
+  }
 }
 
 export default UserInterface; 

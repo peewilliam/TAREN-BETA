@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CAMERA_CONFIG } from './config/gameConfig';
-import GameScene from './scenes/GameScene';
+import SceneManager from './scenes/SceneManager';
 import PlayerControls from './controls/PlayerControls';
 import UserInterface from './components/UserInterface';
 import SocketManager from './sockets/SocketManager';
@@ -26,7 +26,7 @@ class Game {
    * Inicializa as propriedades do jogo
    */
   initializeProperties() {
-    this.scene = null;
+    this.sceneManager = null;
     this.camera = null;
     this.renderer = null;
     this.socketManager = null;
@@ -90,13 +90,13 @@ class Game {
     
     // Criar a cena quando a conexão for estabelecida
     this.socketManager.onConnect(() => {
-      // Inicializar a cena
-      this.scene = new GameScene((message) => {
+      // Inicializar o gerenciador de cenas
+      this.sceneManager = new SceneManager((message) => {
         this.ui.updateLoadingStatus(message);
-      });
+      }, this.socketManager);
       
       // Inicializar o serviço de jogo
-      this.gameService = new GameService(socket, this.scene, this.ui);
+      this.gameService = new GameService(socket, this.sceneManager, this.ui);
       
       // Atualizar referência ao gameService na UI
       this.ui.gameService = this.gameService;
@@ -105,6 +105,9 @@ class Game {
       this.controls = new PlayerControls(socket, (player) => {
         this.ui.updateCamera(player);
       });
+      
+      // Configurar manipulador de interação com portais
+      this.setupPortalInteraction();
       
       // Iniciar o jogo
       this.isRunning = true;
@@ -115,6 +118,101 @@ class Game {
       // Pausar o jogo em caso de desconexão
       this.isRunning = false;
     });
+    
+    // Configurar eventos para troca de cena
+    socket.on('changeScene', (data) => {
+      if (data.sceneName && this.sceneManager) {
+        // Mudar para a cena solicitada pelo servidor
+        this.sceneManager.changeScene(data.sceneName);
+      }
+    });
+  }
+  
+  /**
+   * Configura o manipulador de interação com portais
+   */
+  setupPortalInteraction() {
+    if (!this.gameService || !this.sceneManager) return;
+    
+    // Variável para controlar um cooldown entre teleportes
+    let portalCooldown = false;
+    let lastPortalInteraction = null;
+    let currentPortal = null;
+    
+    // Adicionar listener para tecla de interação
+    document.addEventListener('keydown', (e) => {
+      // Se pressionou a tecla E e há um portal próximo
+      if (e.key.toLowerCase() === 'e' && currentPortal && !portalCooldown) {
+        // Evitar teleportar para a mesma cena onde o jogador já está
+        if (this.sceneManager.getCurrentSceneName() === currentPortal.destination) {
+          return;
+        }
+        
+        // Ativar cooldown para evitar teleportes repetidos
+        portalCooldown = true;
+        lastPortalInteraction = {
+          destination: currentPortal.destination,
+          timestamp: Date.now()
+        };
+        
+        // Tentar mudar para a cena de destino
+        const success = this.sceneManager.changeScene(currentPortal.destination);
+        
+        if (success) {
+          // Notificar o servidor sobre a mudança de cena
+          this.socketManager.socket.emit('changeScene', {
+            sceneName: currentPortal.destination
+          });
+          
+          // Mostrar mensagem para o jogador
+          this.ui.addChatMessage({
+            system: true,
+            message: `Teleportando para: ${currentPortal.name}`
+          });
+          
+          // Desativar o cooldown após um tempo
+          setTimeout(() => {
+            portalCooldown = false;
+            currentPortal = null;
+          }, 3000); // 3 segundos de cooldown entre teleportes
+        } else {
+          // Se falhou, resetar o cooldown mais rapidamente
+          setTimeout(() => {
+            portalCooldown = false;
+          }, 1000);
+        }
+      }
+    });
+    
+    // Verificar proximidade com portais a cada atualização
+    this.portalCheckInterval = setInterval(() => {
+      if (!this.isRunning) return;
+      
+      const currentPlayer = this.gameService.getCurrentPlayer();
+      if (!currentPlayer) return;
+      
+      const currentScene = this.sceneManager.getCurrentScene();
+      if (!currentScene) return;
+      
+      // Verificar se o jogador está perto de um portal
+      const portal = this.sceneManager.currentScene.checkPortalInteraction(currentPlayer.position);
+      
+      // Atualizar o portal atual
+      if (portal !== currentPortal) {
+        // Se entrou em um novo portal
+        if (portal && !currentPortal) {
+          // Mostrar mensagem de interação
+          this.ui.showPortalPrompt(portal.name);
+        } 
+        // Se saiu de um portal
+        else if (!portal && currentPortal) {
+          // Esconder mensagem de interação
+          this.ui.hidePortalPrompt();
+        }
+        
+        currentPortal = portal;
+      }
+    }, 100); // Verificar a cada 100ms para uma detecção mais responsiva
   }
   
   /**
@@ -137,8 +235,8 @@ class Game {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
     
-    if (this.scene) {
-      this.scene.handleResize(this.camera, this.renderer);
+    if (this.sceneManager) {
+      this.sceneManager.handleResize(this.camera, this.renderer);
     }
   }
   
@@ -165,9 +263,15 @@ class Game {
     // Atualizar controles do jogador
     if (this.controls && this.gameService) {
       const currentPlayer = this.gameService.getCurrentPlayer();
-      if (currentPlayer) {
+      if (currentPlayer && this.sceneManager) {
+        // Garantir que os controles conheçam o jogador atual
+        this.controls.player = currentPlayer;
+        
+        // Obter tamanho do mundo da cena atual
+        const worldSize = this.sceneManager.currentScene?.worldSize || 100;
+        
         // Atualizar posição baseada nos controles
-        this.controls.update(currentPlayer, this.scene.worldSize);
+        this.controls.update(currentPlayer, worldSize);
       }
     }
     
@@ -181,8 +285,11 @@ class Game {
    * Renderiza a cena
    */
   render() {
-    if (this.scene && this.camera) {
-      this.renderer.render(this.scene.scene, this.camera);
+    if (this.sceneManager && this.camera) {
+      const currentScene = this.sceneManager.getCurrentScene();
+      if (currentScene) {
+        this.renderer.render(currentScene, this.camera);
+      }
     }
   }
 }
