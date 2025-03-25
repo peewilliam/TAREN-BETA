@@ -64,11 +64,73 @@ class SocketManager {
   }
 
   setupPlayerEvents(socket) {
-    // Atualizar posição do jogador
+    // Atualizar posição do jogador usando movimentação baseada em servidor
+    socket.on('moveCommand', (data) => {
+      const player = gameService.getPlayer(socket.id);
+      if (!player) return;
+      
+      // Validar dados recebidos
+      if (!data || !data.direction || typeof data.direction.x !== 'number' || typeof data.direction.z !== 'number') {
+        console.warn(`Dados de movimento inválidos recebidos de ${socket.id}:`, data);
+        return;
+      }
+      
+      // Processar o movimento com o Game Service
+      const result = gameService.calculatePlayerMovement(socket.id, {
+        x: data.direction.x,
+        z: data.direction.z,
+        timestamp: data.timestamp || Date.now()
+      });
+      
+      if (result && result.success) {
+        // Enviar posição atualizada para todos os jogadores na mesma cena
+        socket.to(player.sceneName).emit('playerMoved', {
+          id: socket.id,
+          position: player.position,
+          direction: data.direction,
+          timestamp: result.timestamp
+        });
+        
+        // Enviar confirmação para o próprio jogador
+        socket.emit('positionUpdated', {
+          position: player.position,
+          timestamp: result.timestamp
+        });
+      } else if (result) {
+        // Enviar mensagem de erro para o cliente
+        socket.emit('movementError', {
+          reason: result.reason || 'Erro ao processar movimento',
+          timestamp: Date.now()
+        });
+      }
+    });
+
+    // Manter o evento updatePosition para compatibilidade, mas adicionar validação servidora
     socket.on('updatePosition', (position) => {
       const player = gameService.getPlayer(socket.id);
       if (!player) return;
       
+      // Validar a posição recebida (anti-cheat básico)
+      const currentPos = player.position;
+      const maxDistance = 5; // Distância máxima permitida por atualização (anti-teleporte)
+      
+      const dx = position.x - currentPos.x;
+      const dy = position.y - currentPos.y;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+      
+      // Se a distância for muito grande, rejeitar o movimento e enviar a posição correta
+      if (distance > maxDistance) {
+        console.warn(`Movimento suspeito detectado para jogador ${socket.id}. Distância: ${distance}`);
+        
+        // Enviar a posição correta de volta para o cliente
+        socket.emit('positionUpdated', {
+          position: currentPos,
+          timestamp: Date.now()
+        });
+        return;
+      }
+      
+      // Atualizar a posição (já que foi validada)
       if (gameService.updatePlayerPosition(socket.id, position)) {
         // Enviar atualização apenas para jogadores na mesma cena
         socket.to(player.sceneName).emit('playerMoved', {

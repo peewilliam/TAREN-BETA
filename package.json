@@ -9,10 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@dimforge/rapier3d": "^0.15.0",
+    "@dimforge/rapier3d-compat": "^0.15.0",
+    "@types/three": "^0.174.0",
+    "socket.io-client": "^4.7.4",
     "three": "^0.161.0",
-    "socket.io-client": "^4.7.4"
+    "three-fbx-loader": "^1.0.3"
   },
   "devDependencies": {
-    "vite": "^5.0.12"
+    "vite": "^5.0.12",
+    "vite-plugin-top-level-await": "^1.5.0",
+    "vite-plugin-wasm": "^3.4.1"
   }
-} 
+}

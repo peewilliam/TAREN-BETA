@@ -17,6 +17,7 @@ class BaseScene {
     this.worldSize = options.worldSize || WORLD_CONFIG.size;
     this.objects = new Map(); // Para manter referências a objetos importantes
     this.portals = []; // Lista de portais na cena
+    this.physicsManager = null; // Será definido pelo SceneManager
     
     // Configurações específicas da cena
     this.setupLights();
@@ -85,6 +86,11 @@ class BaseScene {
         this.scene.add(ground);
         this.objects.set('ground', ground);
         
+        // Adicionar colisor para o chão se o sistema de física estiver disponível
+        if (this.physicsManager && this.physicsManager.initialized) {
+          this.physicsManager.addMapCollider(ground, 'ground');
+        }
+        
         // Adicionar grade para orientação se especificado
         if (options.showGrid !== false) {
           const gridHelper = new THREE.GridHelper(this.worldSize, WORLD_CONFIG.gridSize);
@@ -110,6 +116,11 @@ class BaseScene {
         ground.receiveShadow = true;
         this.scene.add(ground);
         this.objects.set('ground', ground);
+        
+        // Adicionar colisor para o chão se o sistema de física estiver disponível
+        if (this.physicsManager && this.physicsManager.initialized) {
+          this.physicsManager.addMapCollider(ground, 'ground');
+        }
         
         // Adicionar grade para orientação
         if (options.showGrid !== false) {
@@ -255,6 +266,56 @@ class BaseScene {
   onDeactivate() {
     // Método a ser sobrescrito pelas cenas filhas
     console.log('Cena desativada');
+  }
+  
+  /**
+   * Adiciona colisor de física a um objeto da cena
+   * @param {string} objectKey - Chave do objeto no mapa this.objects
+   * @param {string} colliderID - ID único para o colisor
+   * @param {string} colliderType - Tipo de colisor: 'trimesh', 'cuboid', 'ball', 'auto'
+   */
+  addColliderToObject(objectKey, colliderID, colliderType = 'auto') {
+    if (!this.physicsManager || !this.physicsManager.initialized) {
+      console.warn('Sistema de física não inicializado para adicionar colisor');
+      return;
+    }
+    
+    const object = this.objects.get(objectKey);
+    if (!object) {
+      console.warn(`Objeto com chave ${objectKey} não encontrado na cena`);
+      return;
+    }
+    
+    return this.physicsManager.addMapCollider(object, colliderID || objectKey, colliderType);
+  }
+  
+  /**
+   * Define o gerenciador de física a ser utilizado
+   * @param {PhysicsManager} physicsManager - Gerenciador de física
+   */
+  setPhysicsManager(physicsManager) {
+    this.physicsManager = physicsManager;
+    
+    // Adicionar colisores aos objetos existentes, se o sistema de física estiver disponível
+    if (this.physicsManager && this.physicsManager.initialized) {
+      // Adicionar colisor ao chão se existir
+      const ground = this.objects.get('ground');
+      if (ground) {
+        // Usar cuboid para o chão (mais eficiente e estável que trimesh)
+        this.physicsManager.addMapCollider(ground, 'ground', 'cuboid');
+      }
+      
+      // Adicionar outros colisores específicos da cena (implementado por subclasses)
+      this.setupSceneColliders();
+    }
+  }
+  
+  /**
+   * Configura colisores específicos da cena
+   * Este método deve ser sobrescrito por subclasses para adicionar colisores específicos
+   */
+  setupSceneColliders() {
+    // Por padrão não faz nada, deve ser implementado pelas subclasses
   }
 }
 

@@ -14,12 +14,42 @@ class Player {
     this.id = playerData.id;
     this.name = playerData.name || `Jogador ${playerData.id.substring(0, 4)}`;
     this.color = playerData.color || PLAYER_CONFIG.bodyColor;
+    
+    // Posição armazenada como vetor Three.js
     this.position = new THREE.Vector3(playerData.position.x, 0, playerData.position.y);
-    this.sceneName = playerData.sceneName || 'main'; // Cena em que o jogador está
+    
+    // Armazenar posição autorizada pelo servidor separadamente
+    this.serverPosition = {
+      x: playerData.position.x || 0,
+      y: playerData.position.y || 0
+    };
+    
+    // Marca de tempo da última atualização do servidor
+    this.lastServerUpdate = Date.now();
+    
+    // Status de previsão local
+    this.hasPrediction = false;
+    
+    // Cena em que o jogador está
+    this.sceneName = playerData.sceneName || 'main';
+    
+    // Atributos controlados pelo servidor
+    this.speed = playerData.speed || PLAYER_CONFIG.moveSpeed;
+    this.health = playerData.health || 100;
+    this.maxHealth = playerData.maxHealth || 100;
+    this.level = playerData.level || 1;
+    this.experience = playerData.experience || 0;
+    this.stats = playerData.stats || {
+      strength: 10,
+      agility: 10,
+      intelligence: 10
+    };
     
     // Criar a representação visual do jogador
     this.mesh = this.createPlayerMesh();
     this.updatePosition(playerData.position);
+    
+    console.log(`Jogador criado: ${this.name}, velocidade: ${this.speed}`);
   }
   
   /**
@@ -70,16 +100,32 @@ class Player {
   /**
    * Atualiza a posição do jogador
    * @param {Object} position - Nova posição {x, y}
+   * @param {boolean} isPrediction - Se é apenas uma previsão local (não autorizada pelo servidor)
    */
-  updatePosition(position) {
+  updatePosition(position, isPrediction = false) {
     if (!position) {
       console.error('Tentativa de atualizar posição com valor nulo');
       return;
     }
     
-    console.log(`Atualizando posição do jogador ${this.id}:`, position);
+    // Se for uma posição autorizada do servidor
+    if (!isPrediction) {
+      this.serverPosition = {
+        x: position.x || 0,
+        y: position.y || 0
+      };
+      
+      this.lastServerUpdate = Date.now();
+      this.hasPrediction = false;
+      
+      console.log(`Posição autorizada do servidor para jogador ${this.id}: (${position.x.toFixed(2)}, ${position.y.toFixed(2)})`);
+    } else {
+      // Se for previsão local, marcar como tendo previsão
+      this.hasPrediction = true;
+      console.log(`Previsão local para jogador ${this.id}: (${position.x.toFixed(2)}, ${position.y.toFixed(2)})`);
+    }
     
-    // Atualizar a posição interna
+    // Sempre atualizar a posição visual
     this.position.x = position.x || 0;
     this.position.z = position.y || 0;
     
@@ -88,6 +134,40 @@ class Player {
       this.mesh.position.set(position.x || 0, 0, position.y || 0);
     } else {
       console.warn('Mesh não encontrado ao atualizar posição');
+    }
+  }
+  
+  /**
+   * Sincroniza posição preditiva com posição autorizada pelo servidor
+   * @param {number} deltaTime - Tempo decorrido desde o último frame
+   */
+  syncWithServerPosition(deltaTime) {
+    if (!this.hasPrediction) return;
+    
+    // Verificar se a previsão está muito desalinhada com a posição do servidor
+    const dx = this.position.x - this.serverPosition.x;
+    const dz = this.position.z - this.serverPosition.y;
+    
+    // Se a distância for pequena ou não houver atualização recente do servidor, não fazer nada
+    const distSquared = dx * dx + dz * dz;
+    if (distSquared < 0.01 || Date.now() - this.lastServerUpdate > PLAYER_CONFIG.prediction.maxDelay) {
+      return;
+    }
+    
+    // Usar interpolação linear (LERP) para sincronizar suavemente
+    const lerpFactor = PLAYER_CONFIG.prediction.lerp * (deltaTime / 16.67); // Normalizar para ~60 FPS
+    
+    // Calcular nova posição interpolada
+    const newX = this.position.x - dx * lerpFactor;
+    const newZ = this.position.z - dz * lerpFactor;
+    
+    // Atualizar posição mantendo a previsão (apenas visual, não envia ao servidor)
+    this.position.x = newX;
+    this.position.z = newZ;
+    
+    // Atualizar mesh
+    if (this.mesh) {
+      this.mesh.position.set(newX, 0, newZ);
     }
   }
   
@@ -134,7 +214,7 @@ class Player {
   }
   
   /**
-   * Atualiza os rótulos 2D na cena
+   * Atualiza as rótulos 2D na cena
    */
   updateLabels() {
     this.mesh.traverse(object => {
@@ -166,7 +246,9 @@ class Player {
    * @param {THREE.Scene} scene - Cena Three.js
    */
   remove(scene) {
-    scene.remove(this.mesh);
+    if (scene) {
+      scene.remove(this.mesh);
+    }
     
     // Limpar os elementos DOM criados
     this.mesh.traverse(object => {
@@ -174,6 +256,57 @@ class Player {
         object.div.parentNode.removeChild(object.div);
       }
     });
+  }
+  
+  /**
+   * Atualiza os atributos do jogador com dados do servidor
+   * @param {Object} data - Dados do servidor
+   */
+  updateFromServer(data) {
+    // Atualizar atributos que só o servidor deve controlar
+    if (data.position) {
+      this.updatePosition(data.position);
+    }
+    
+    if (data.speed !== undefined) {
+      this.speed = data.speed;
+      console.log(`Velocidade do jogador ${this.id} atualizada para: ${this.speed}`);
+    }
+    
+    if (data.health !== undefined) {
+      this.health = data.health;
+      this.maxHealth = data.maxHealth || this.maxHealth;
+    }
+    
+    if (data.level !== undefined) {
+      this.level = data.level;
+    }
+    
+    if (data.experience !== undefined) {
+      this.experience = data.experience;
+    }
+    
+    if (data.stats) {
+      this.stats = { ...this.stats, ...data.stats };
+    }
+    
+    // Atualizar outros atributos controlados pelo servidor
+    if (data.sceneName) {
+      this.changeScene(data.sceneName);
+    }
+    
+    console.log(`Atualização do servidor para jogador ${this.id}:`, data);
+  }
+  
+  /**
+   * Atualiza lógica do jogador a cada frame
+   * @param {number} deltaTime - Tempo decorrido desde o último frame em ms
+   */
+  update(deltaTime) {
+    // Sincronizar posição com o servidor se houver diferença
+    if (PLAYER_CONFIG.prediction.enabled) {
+      this.syncWithServerPosition(deltaTime);
+    }
   }
 }
 

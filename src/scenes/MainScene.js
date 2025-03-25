@@ -192,6 +192,40 @@ class MainScene extends BaseScene {
       portal.mesh.rotation.y = 0; // Resetar rotação
     });
   }
+  
+  /**
+   * Configura colisores específicos para a cena principal
+   */
+  setupSceneColliders() {
+    // Se o sistema de física não estiver inicializado, não faz nada
+    if (!this.physicsManager || !this.physicsManager.initialized) {
+      console.warn('Sistema de física não inicializado para configurar colisores');
+      return;
+    }
+    
+    // Adicionar colisores para objetos existentes
+    const centralBuilding = this.objects.get('centralBuilding');
+    if (centralBuilding) {
+      // Usar cuboid para o prédio central (mais eficiente que trimesh)
+      this.addColliderToObject('centralBuilding', 'central-building', 'cuboid');
+    }
+    
+    const roof = this.objects.get('roof');
+    if (roof) {
+      // Usar cuboid para o telhado
+      this.addColliderToObject('roof', 'central-building-roof', 'cuboid');
+    }
+    
+    // Adicionar colisores para portais
+    this.portals.forEach((portal, index) => {
+      if (portal.mesh) {
+        // Usar esferas para os portais (melhor para detecção de colisão com jogador)
+        this.physicsManager.addMapCollider(portal.mesh, `portal-${index}`, 'ball');
+      }
+    });
+    
+    console.log('Colisores da cena principal configurados');
+  }
 }
 
 export default MainScene; 

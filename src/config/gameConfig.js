@@ -28,7 +28,13 @@ export const PLAYER_CONFIG = {
   headColor: 0xffcc99,
   bodySize: { x: 1, y: 2, z: 1 },
   headRadius: 0.5,
-  nameHeight: 3.5
+  nameHeight: 3.5,
+  // Configurações de movimento preditivo
+  prediction: {
+    enabled: true,    // Habilitar movimento preditivo
+    lerp: 0.3,        // Fator de interpolação para correções
+    maxDelay: 300     // Tempo máximo para aceitar correções (ms)
+  }
 };
 
 // Configurações da luz
@@ -121,7 +127,8 @@ export const SYSTEM_MESSAGES = {
   loading: 'Carregando o mundo...',
   connected: 'Conectado ao servidor, aguardando dados do jogo...',
   sceneChange: (sceneName) => `Teleportando para: ${sceneName}...`,
-  nearPortal: (destination) => `Pressione E para entrar em: ${destination}`
+  nearPortal: (destination) => `Pressione E para entrar em: ${destination}`,
+  movementError: (reason) => `Erro de movimento: ${reason}`
 };
 
 export default {

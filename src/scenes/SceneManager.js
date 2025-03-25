@@ -12,13 +12,15 @@ class SceneManager {
    * Inicializa o gerenciador de cenas
    * @param {Function} onLoadCallback - Callback chamado durante carregamento
    * @param {Object} socketManager - Gerenciador de sockets
+   * @param {Object} physicsManager - Gerenciador de física (opcional)
    */
-  constructor(onLoadCallback, socketManager) {
+  constructor(onLoadCallback, socketManager, physicsManager = null) {
     this.currentScene = null;
     this.scenes = new Map();
     this.onLoadCallback = onLoadCallback;
     this.socketManager = socketManager;
     this.camera = window.camera;
+    this.physicsManager = physicsManager;
     
     // Inicializar cenas
     this.initializeScenes();
@@ -34,8 +36,30 @@ class SceneManager {
     this.scenes.set('dungeon-ice', new DungeonIceScene(this.onLoadCallback));
     this.scenes.set('arena', new ArenaScene(this.onLoadCallback));
     
+    // Configurar gerenciador de física para todas as cenas
+    if (this.physicsManager) {
+      this.scenes.forEach(scene => {
+        scene.setPhysicsManager(this.physicsManager);
+      });
+    }
+    
     // Definir cena principal como atual
     this.currentScene = this.scenes.get('main');
+  }
+  
+  /**
+   * Define o gerenciador de física para este SceneManager
+   * @param {Object} physicsManager - Gerenciador de física
+   */
+  setPhysicsManager(physicsManager) {
+    this.physicsManager = physicsManager;
+    
+    // Configurar gerenciador de física para todas as cenas
+    if (this.physicsManager) {
+      this.scenes.forEach(scene => {
+        scene.setPhysicsManager(this.physicsManager);
+      });
+    }
   }
   
   /**
@@ -44,59 +68,36 @@ class SceneManager {
    * @returns {boolean} - Se a troca foi bem-sucedida
    */
   changeScene(sceneName) {
-    // Verificar se a cena existe
     if (!this.scenes.has(sceneName)) {
       console.error(`Cena "${sceneName}" não encontrada`);
       return false;
     }
     
-    // Obter o nome da cena atual
-    const currentSceneName = this.getCurrentSceneName();
+    const currentSceneName = this.currentScene ? [...this.scenes.entries()].find(([key, scene]) => scene === this.currentScene)?.[0] || 'unknown' : 'none';
+    console.log(`Mudando de cena: ${currentSceneName} -> ${sceneName}`);
     
-    // Verificar se já estamos na cena solicitada
-    if (currentSceneName === sceneName) {
-      console.log(`Já estamos na cena ${sceneName}, ignorando mudança`);
-      return false;
+    // Remover objetos da cena atual
+    if (this.currentScene) {
+      // Se houver um sistema de física, remover colisores associados a esta cena
+      if (this.physicsManager && this.physicsManager.initialized) {
+        // Limpar colisores da cena atual (isso poderia ser melhorado para remover 
+        // apenas os colisores específicos desta cena, se necessário)
+        this.physicsManager.mapColliders.clear();
+      }
     }
     
-    console.log(`Iniciando mudança de cena: ${currentSceneName} -> ${sceneName}`);
+    // Definir nova cena
+    this.currentScene = this.scenes.get(sceneName);
     
-    const newScene = this.scenes.get(sceneName);
-    
-    // Desativar a cena atual
-    if (this.currentScene && typeof this.currentScene.onDeactivate === 'function') {
-      this.currentScene.onDeactivate();
-    }
-    
-    // Informa ao servidor sobre a troca de cena (importante!)
-    if (this.socketManager && this.socketManager.socket) {
+    // Notificar o servidor sobre a mudança de cena
+    if (this.socketManager) {
       this.socketManager.socket.emit('changeScene', { sceneName });
     }
     
-    // Salvar objetos da cena atual que precisam ser transferidos
-    const objectsToTransfer = new Map();
-    if (window.game && window.game.gameService) {
-      const currentPlayer = window.game.gameService.getCurrentPlayer();
-      if (currentPlayer && currentPlayer.mesh) {
-        objectsToTransfer.set('currentPlayer', currentPlayer.mesh);
-      }
+    // Se houver um sistema de física, configurar colisores para a nova cena
+    if (this.physicsManager && this.physicsManager.initialized) {
+      this.currentScene.setPhysicsManager(this.physicsManager);
     }
-    
-    // Realizar a troca de cena
-    this.currentScene = newScene;
-    
-    // Ativar a nova cena
-    if (this.currentScene && typeof this.currentScene.onActivate === 'function') {
-      this.currentScene.onActivate();
-    }
-    
-    // Transferir objetos importantes para a nova cena
-    objectsToTransfer.forEach((object, key) => {
-      if (key === 'currentPlayer') {
-        // Adicionar novamente o jogador à nova cena
-        this.add(object);
-      }
-    });
     
     // Notifica callback de carregamento
     if (this.onLoadCallback) {

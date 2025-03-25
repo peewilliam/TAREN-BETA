@@ -5,6 +5,7 @@ import PlayerControls from './controls/PlayerControls';
 import UserInterface from './components/UserInterface';
 import SocketManager from './sockets/SocketManager';
 import GameService from './services/GameService';
+import PhysicsManager from './physics/PhysicsManager';
 
 /**
  * Classe principal que coordena todos os componentes do jogo
@@ -34,6 +35,8 @@ class Game {
     this.ui = null;
     this.controls = null;
     this.isRunning = false;
+    this.physicsManager = new PhysicsManager();
+    this.lastUpdateTime = performance.now();
   }
   
   /**
@@ -91,9 +94,13 @@ class Game {
     // Criar a cena quando a conexão for estabelecida
     this.socketManager.onConnect(() => {
       // Inicializar o gerenciador de cenas
-      this.sceneManager = new SceneManager((message) => {
-        this.ui.updateLoadingStatus(message);
-      }, this.socketManager);
+      this.sceneManager = new SceneManager(
+        (message) => {
+          this.ui.updateLoadingStatus(message);
+        }, 
+        this.socketManager,
+        this.physicsManager
+      );
       
       // Inicializar o serviço de jogo
       this.gameService = new GameService(socket, this.sceneManager, this.ui);
@@ -101,10 +108,16 @@ class Game {
       // Atualizar referência ao gameService na UI
       this.ui.gameService = this.gameService;
       
+      // Configurar referências ao sistema de física
+      this.gameService.physicsManager = this.physicsManager;
+      
       // Inicializar controles do jogador
       this.controls = new PlayerControls(socket, (player) => {
         this.ui.updateCamera(player);
       });
+      
+      // Atualizar referência ao sistema de física nos controles
+      this.controls.physicsManager = this.physicsManager;
       
       // Configurar manipulador de interação com portais
       this.setupPortalInteraction();
@@ -260,6 +273,15 @@ class Game {
    * Atualiza o estado do jogo a cada frame
    */
   update() {
+    const currentTime = performance.now();
+    const deltaTime = currentTime - this.lastUpdateTime; // Tempo decorrido em ms
+    this.lastUpdateTime = currentTime;
+    
+    // Atualizar sistema de física
+    if (this.physicsManager) {
+      this.physicsManager.update(deltaTime / 1000); // Converter para segundos para o sistema de física
+    }
+    
     // Atualizar controles do jogador
     if (this.controls && this.gameService) {
       const currentPlayer = this.gameService.getCurrentPlayer();
@@ -270,9 +292,18 @@ class Game {
         // Obter tamanho do mundo da cena atual
         const worldSize = this.sceneManager.currentScene?.worldSize || 100;
         
-        // Atualizar posição baseada nos controles
-        this.controls.update(currentPlayer, worldSize);
+        // Atualizar posição baseada nos controles, passando deltaTime
+        this.controls.update(currentPlayer, worldSize, deltaTime);
       }
+    }
+    
+    // Atualizar todos os jogadores (para aplicar interpolação)
+    if (this.gameService && this.gameService.players) {
+      this.gameService.players.forEach(player => {
+        if (player.update) {
+          player.update(deltaTime);
+        }
+      });
     }
     
     // Atualizar rótulos 2D dos jogadores
@@ -290,6 +321,25 @@ class Game {
       if (currentScene) {
         this.renderer.render(currentScene, this.camera);
       }
+    }
+  }
+  
+  /**
+   * Ativa ou desativa a visualização de depuração de colisões físicas
+   * @param {boolean} enabled - Se a visualização deve ser ativada ou desativada
+   */
+  togglePhysicsDebug(enabled) {
+    if (!this.physicsManager || !this.sceneManager || !this.sceneManager.currentScene) {
+      console.warn('Sistema de física ou cena não inicializados');
+      return;
+    }
+    
+    if (enabled) {
+      this.physicsManager.createDebugVisualization(this.sceneManager.currentScene.scene);
+      console.log('Visualização de debug de física ativada');
+    } else {
+      this.physicsManager.removeDebugVisualization(this.sceneManager.currentScene.scene);
+      console.log('Visualização de debug de física desativada');
     }
   }
 }

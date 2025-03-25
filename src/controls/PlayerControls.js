@@ -7,6 +7,7 @@ export default class PlayerControls {
   constructor(socket, updatePositionCallback) {
     this.socket = socket;
     this.updatePositionCallback = updatePositionCallback;
+    this.physicsManager = null; // Será definido por Game.js
     this.keys = {
       [CONTROL_KEYS.forward]: false,
       [CONTROL_KEYS.left]: false,
@@ -15,6 +16,7 @@ export default class PlayerControls {
     };
     
     this.moveSpeed = PLAYER_CONFIG.moveSpeed;
+    this.lastMovementTime = Date.now(); // Timestamp do último movimento enviado
     this.setupEventListeners();
   }
   
@@ -52,9 +54,10 @@ export default class PlayerControls {
    * Atualiza a posição do jogador com base nas teclas pressionadas
    * @param {Object} player - Objeto do jogador
    * @param {number} worldSize - Tamanho do mundo do jogo
+   * @param {number} deltaTime - Tempo decorrido desde o último frame (ms)
    * @returns {boolean} - True se o jogador se moveu
    */
-  update(player, worldSize) {
+  update(player, worldSize, deltaTime = 16.67) {
     if (!player) {
       console.warn('PlayerControls: jogador não definido em update()');
       return false;
@@ -68,49 +71,78 @@ export default class PlayerControls {
     // Armazenar referência ao jogador (útil para garantir controle após mudança de cena)
     this.player = player;
     
-    const position = { 
-      x: player.position.x, 
-      y: player.position.z 
-    };
-    
+    // Verificar se há movimento baseado nas teclas
+    const direction = { x: 0, z: 0 };
     let moved = false;
     
-    // Verificar teclas e atualizar posição
+    // Verificar teclas e calcular direção
     if (this.keys[CONTROL_KEYS.forward]) {
-      position.y -= this.moveSpeed;
+      direction.z = -1;
       moved = true;
     }
     if (this.keys[CONTROL_KEYS.backward]) {
-      position.y += this.moveSpeed;
+      direction.z = 1;
       moved = true;
     }
     if (this.keys[CONTROL_KEYS.left]) {
-      position.x -= this.moveSpeed;
+      direction.x = -1;
       moved = true;
     }
     if (this.keys[CONTROL_KEYS.right]) {
-      position.x += this.moveSpeed;
+      direction.x = 1;
       moved = true;
     }
     
+    // Normalizar o vetor de direção para movimento consistente em diagonais
+    if (moved && (direction.x !== 0 || direction.z !== 0)) {
+      const length = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+      
+      if (length > 0) {
+        direction.x /= length;
+        direction.z /= length;
+      }
+    }
+    
+    // Se houve movimento, enviar comando para o servidor
     if (moved) {
-      // Validar limites do mundo
-      const limit = worldSize / 2 - 3;
-      position.x = Math.max(-limit, Math.min(limit, position.x));
-      position.y = Math.max(-limit, Math.min(limit, position.y));
+      const currentTime = Date.now();
       
-      // Atualizar a posição no modelo usando o método do jogador
-      player.updatePosition(position);
+      // Limitar a frequência de envio para não sobrecarregar o servidor
+      const movementInterval = 100; // ms entre envios
+      if (currentTime - this.lastMovementTime >= movementInterval) {
+        // Enviar apenas as intenções de direção para o servidor
+        this.socket.emit('moveCommand', {
+          direction: {
+            x: direction.x,
+            z: direction.z
+          },
+          timestamp: currentTime
+        });
+        
+        this.lastMovementTime = currentTime;
+      }
       
-      // Log para depuração (remove em produção)
-      console.log(`Movimento: (${position.x.toFixed(2)}, ${position.y.toFixed(2)})`);
-      
-      // Enviar atualização para o servidor
-      this.socket.emit('updatePosition', position);
-      
-      // Chamar o callback para atualizar a câmera ou outros elementos
-      if (this.updatePositionCallback) {
-        this.updatePositionCallback(player);
+      // Movimento preditivo local para feedback imediato
+      if (PLAYER_CONFIG.prediction.enabled) {
+        // Usar velocidade do jogador definida pelo servidor
+        const moveSpeed = player.speed || this.moveSpeed;
+        
+        // Calcular delta baseado na velocidade do jogador e no tempo decorrido
+        const speedFactor = moveSpeed * (deltaTime / 1000);
+        
+        // Preditivamente mover o jogador na direção atual
+        const predictedPosition = {
+          x: player.position.x + direction.x * speedFactor,
+          y: player.position.z + direction.z * speedFactor
+        };
+        
+        // Validar limites do mundo
+        const limit = worldSize / 2 - 3;
+        predictedPosition.x = Math.max(-limit, Math.min(limit, predictedPosition.x));
+        predictedPosition.y = Math.max(-limit, Math.min(limit, predictedPosition.y));
+        
+        // Atualizar localmente para feedback imediato
+        player.updatePosition(predictedPosition, true); // true = é apenas previsão
       }
       
       return true;

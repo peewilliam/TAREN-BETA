@@ -19,43 +19,133 @@ class GameService {
     this.currentPlayerId = null;
     this.worldSize = sceneManager.currentScene.worldSize;
     this.currentSceneName = 'main';
+    this.physicsManager = null; // Será definido por Game.js
     
     this.setupSocketListeners();
   }
   
   /**
-   * Configura os listeners de eventos do socket
+   * Configura os listeners de socket para o jogo
    */
   setupSocketListeners() {
-    // Recebendo estado inicial do jogo
-    this.socket.on('gameState', this.handleGameState.bind(this));
+    // Evento de conexão
+    this.socket.on('connect', () => {
+      console.log('Conectado ao servidor com ID:', this.socket.id);
+      this.connected = true;
+    });
     
-    // Jogador entrou
-    this.socket.on('playerJoined', this.handlePlayerJoined.bind(this));
+    // Evento de desconexão
+    this.socket.on('disconnect', () => {
+      console.log('Desconectado do servidor');
+      this.connected = false;
+    });
     
-    // Jogador movimentou
-    this.socket.on('playerMoved', this.handlePlayerMoved.bind(this));
+    // Receber estado inicial do jogo
+    this.socket.on('gameState', (data) => {
+      console.log('Estado do jogo recebido:', data);
+      this.processGameState(data);
+    });
     
-    // Jogador saiu
-    this.socket.on('playerLeft', this.handlePlayerLeft.bind(this));
+    // Quando um jogador entra no jogo
+    this.socket.on('playerJoined', (playerData) => {
+      console.log('Novo jogador entrou:', playerData);
+      const player = this.updatePlayer(playerData);
+      this.updatePlayerCount();
+    });
     
-    // Recebimento de mensagem de chat
-    this.socket.on('chatMessage', this.handleChatMessage.bind(this));
+    // Quando um jogador sai do jogo
+    this.socket.on('playerLeft', (playerId) => {
+      console.log('Jogador saiu:', playerId);
+      this.removePlayer(playerId);
+      this.updatePlayerCount();
+    });
     
-    // Mudança de cena
-    this.socket.on('playerChangedScene', this.handlePlayerChangedScene.bind(this));
+    // Quando um jogador muda de posição
+    this.socket.on('playerMoved', (data) => {
+      if (data.id && this.players.has(data.id)) {
+        const player = this.players.get(data.id);
+        
+        // Receber posição autorizada do servidor
+        if (data.position) {
+          // Atualizar posição sem marcar como previsão (posição autoritativa)
+          player.updatePosition(data.position);
+          
+          // Se for o jogador atual, atualizar a câmera
+          if (data.id === this.currentPlayerId && this.ui) {
+            this.ui.updateCamera(player);
+          }
+        }
+      }
+    });
     
-    // Confirmação de carregamento de cena
-    this.socket.on('sceneLoaded', this.handleSceneLoaded.bind(this));
+    // Quando o servidor responde a um movimento com a posição autorizada
+    this.socket.on('positionUpdated', (data) => {
+      // Obter o jogador atual
+      const currentPlayer = this.getCurrentPlayer();
+      if (!currentPlayer) return;
+      
+      console.log('Posição autorizada recebida do servidor:', data);
+      
+      // Aplicar a posição autorizada ao jogador
+      if (data.position) {
+        currentPlayer.updatePosition(data.position);
+        
+        // Atualizar a câmera
+        if (this.ui) {
+          this.ui.updateCamera(currentPlayer);
+        }
+      }
+    });
     
-    // Estado da cena atual (resposta à solicitação requestSceneState)
-    this.socket.on('sceneState', this.handleSceneState.bind(this));
+    // Quando o servidor envia um erro de movimento
+    this.socket.on('movementError', (data) => {
+      // Obter o jogador atual
+      const currentPlayer = this.getCurrentPlayer();
+      if (!currentPlayer) return;
+      
+      console.warn('Erro de movimento recebido do servidor:', data);
+      
+      // Exibir mensagem de erro no chat se disponível
+      if (this.ui && this.ui.addChatMessage && data.reason) {
+        this.ui.addChatMessage({
+          system: true,
+          message: SYSTEM_MESSAGES.movementError(data.reason)
+        });
+      }
+      
+      // Se houver uma posição correta enviada junto, aplicá-la imediatamente
+      if (data.position) {
+        currentPlayer.updatePosition(data.position);
+        
+        // Atualizar a câmera
+        if (this.ui) {
+          this.ui.updateCamera(currentPlayer);
+        }
+      }
+    });
     
-    // Enviar solicitação de mudança de cena
-    this.socket.on('changeScene', (data) => {
-      if (data.sceneName && this.sceneManager) {
-        this.sceneManager.changeScene(data.sceneName);
-        this.currentSceneName = data.sceneName;
+    // Quando o servidor envia atualizações de jogadores
+    this.socket.on('playerUpdates', (updates) => {
+      for (const update of updates) {
+        if (update.id && this.players.has(update.id)) {
+          const player = this.players.get(update.id);
+          // Aplicar atributos controlados pelo servidor
+          player.updateFromServer(update);
+        }
+      }
+    });
+    
+    // Quando um jogador muda de cena
+    this.socket.on('sceneChange', (data) => {
+      console.log('Jogador mudou de cena:', data);
+      const player = this.players.get(data.id);
+      if (player) {
+        player.changeScene(data.sceneName);
+        
+        // Se for o jogador atual, mudar a cena
+        if (data.id === this.currentPlayerId) {
+          this.changeScene(data.sceneName);
+        }
       }
     });
   }
@@ -142,6 +232,29 @@ class GameService {
       }
     } else {
       console.log(`Ignorando jogador ${playerData.name} da cena ${playerData.sceneName} (cena atual: ${this.currentSceneName})`);
+    }
+  }
+  
+  /**
+   * Manipula o evento de desconexão de jogador
+   * @param {Object} data - Dados do jogador desconectado
+   */
+  handlePlayerDisconnected(data) {
+    const player = this.players.get(data.id);
+    if (player) {
+      // Remover jogador da cena física
+      if (this.physicsManager && this.physicsManager.initialized) {
+        this.physicsManager.removePlayerBody(data.id);
+      }
+      
+      // Remover jogador da cena visual
+      this.removePlayerFromScene(data.id);
+      this.players.delete(data.id);
+      
+      // Atualizar contador de jogadores
+      this.updatePlayerCount();
+      
+      console.log(`Jogador ${data.id} desconectado`);
     }
   }
   
@@ -362,8 +475,15 @@ class GameService {
    */
   removePlayerFromScene(playerId) {
     const player = this.players.get(playerId);
-    if (player && player.mesh) {
-      this.sceneManager.remove(player.mesh);
+    if (player && player.mesh && this.sceneManager && this.sceneManager.currentScene) {
+      this.sceneManager.currentScene.scene.remove(player.mesh);
+      player.remove();
+      console.log(`Jogador ${playerId} removido da cena`);
+      
+      // Remover jogador do sistema de física
+      if (this.physicsManager && this.physicsManager.initialized) {
+        this.physicsManager.removePlayerBody(playerId);
+      }
     }
   }
   
@@ -396,6 +516,12 @@ class GameService {
       const existingPlayer = this.players.get(playerData.id);
       if (existingPlayer && existingPlayer.mesh) {
         this.removePlayerFromScene(playerData.id);
+        
+        // Remover jogador do sistema de física
+        if (this.physicsManager && this.physicsManager.initialized) {
+          this.physicsManager.removePlayerBody(playerData.id);
+        }
+        
         this.players.delete(playerData.id);
       }
       
@@ -417,6 +543,11 @@ class GameService {
       } else {
         console.error('Não foi possível adicionar jogador à cena: SceneManager indisponível ou mesh não criado');
       }
+      
+      // Adicionar jogador ao sistema de física
+      if (this.physicsManager && this.physicsManager.initialized) {
+        this.physicsManager.updatePlayerBody(player);
+      }
     } else {
       // Atualizar jogador existente
       player.updatePosition(playerData.position);
@@ -425,6 +556,11 @@ class GameService {
       if (!player.mesh && this.sceneManager) {
         player.recreatePlayerMesh();
         this.sceneManager.add(player.mesh);
+      }
+      
+      // Atualizar corpo físico do jogador
+      if (this.physicsManager && this.physicsManager.initialized) {
+        this.physicsManager.updatePlayerBody(player);
       }
     }
     
@@ -560,6 +696,141 @@ class GameService {
     this.updatePlayerCount();
     
     console.log(`Jogadores na cena "${this.currentSceneName}":`, this.players.size);
+  }
+  
+  /**
+   * Manipula o evento de mudança de cena
+   * @param {Object} data - Dados da mudança de cena
+   */
+  handleSceneChange(data) {
+    if (data.sceneName && this.sceneManager) {
+      this.sceneManager.changeScene(data.sceneName);
+      this.currentSceneName = data.sceneName;
+    }
+  }
+  
+  /**
+   * Processa uma atualização do servidor para um jogador
+   * @param {Object} playerData - Dados do jogador recebidos do servidor
+   */
+  processPlayerUpdate(playerData) {
+    if (!playerData || !playerData.id) return null;
+    
+    // Obter jogador existente ou criar um novo
+    let player = this.players.get(playerData.id);
+    
+    if (player) {
+      // Para jogadores existentes, usar updateFromServer para aplicar todas as atualizações
+      player.updateFromServer(playerData);
+      
+      // Atualizar física se necessário
+      if (this.physicsManager && this.physicsManager.initialized) {
+        this.physicsManager.updatePlayerBody(player);
+      }
+      
+      return player;
+    } else {
+      // Para novos jogadores, criar uma nova instância
+      return this.updatePlayer(playerData);
+    }
+  }
+  
+  /**
+   * Processa uma mensagem de atualização de posição do servidor
+   * @param {Object} data - Dados de posição recebidos
+   */
+  processPositionUpdate(data) {
+    if (!data || !data.id) return;
+    
+    const player = this.players.get(data.id);
+    if (!player) return;
+    
+    // Verificar se a mensagem é recente (anti-replay attack)
+    if (data.timestamp && (Date.now() - data.timestamp > 5000)) {
+      console.warn('Ignorando atualização de posição desatualizada');
+      return;
+    }
+    
+    // Aplicar posição autorizada do servidor
+    if (data.position) {
+      player.updatePosition(data.position);
+      
+      // Se for o jogador atual, atualizar a câmera
+      if (data.id === this.currentPlayerId && this.ui) {
+        this.ui.updateCamera(player);
+      }
+    }
+  }
+  
+  /**
+   * Processa uma atualização de atributos de jogador do servidor
+   * @param {Object} data - Dados de atributos recebidos
+   */
+  processAttributesUpdate(data) {
+    if (!data || !data.id) return;
+    
+    const player = this.players.get(data.id);
+    if (!player) return;
+    
+    // Atualizar atributos controlados pelo servidor
+    player.updateFromServer(data);
+    
+    // Se for o jogador atual, atualizar a interface
+    if (data.id === this.currentPlayerId && this.ui) {
+      this.ui.updatePlayerInfo(player);
+    }
+  }
+  
+  /**
+   * Processa o estado inicial do jogo recebido do servidor
+   * @param {Object} data - Dados do estado do jogo
+   */
+  processGameState(data) {
+    console.log('Processando estado do jogo:', data);
+    
+    // Atualizar tamanho do mundo se for diferente
+    if (data.worldSize && data.worldSize !== this.worldSize) {
+      this.worldSize = data.worldSize;
+    }
+    
+    // Processar jogadores
+    if (data.players && Array.isArray(data.players)) {
+      data.players.forEach(playerData => {
+        // Apenas adicionar jogadores que estão na mesma cena
+        if (!playerData.sceneName || playerData.sceneName === this.currentSceneName) {
+          this.processPlayerUpdate(playerData);
+        }
+      });
+    }
+    
+    // Atualizar contador de jogadores após processar todos
+    this.updatePlayerCount();
+    
+    // Armazenar ID do jogador atual
+    if (data.currentPlayer) {
+      this.currentPlayerId = data.currentPlayer.id;
+      
+      // Registrar a cena atual do jogador
+      this.currentSceneName = data.currentPlayer.sceneName || 'main';
+      
+      // Processar dados do jogador atual (inclui atributos do servidor)
+      const currentPlayer = this.processPlayerUpdate(data.currentPlayer);
+      
+      // Notificar a UI
+      if (currentPlayer && this.ui && this.ui.updatePlayerInfo) {
+        this.ui.updatePlayerInfo(currentPlayer);
+      }
+      
+      // Ajustar a câmera para o jogador atual
+      this.focusCameraOnCurrentPlayer();
+    }
+    
+    // Remover tela de carregamento
+    if (this.ui && this.ui.hideLoadingScreen) {
+      setTimeout(() => {
+        this.ui.hideLoadingScreen();
+      }, 1000);
+    }
   }
 }
 
